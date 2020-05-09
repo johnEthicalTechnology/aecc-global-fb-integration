@@ -28,6 +28,15 @@ provider:
           - - 'arn:aws:s3:::'
             - Ref: FacebookLeadflowBucket
             - '/*'
+    - Effect: 'Allow'
+      Action:
+        - 'ssm:GetParameter'
+        - 'ssm:PutParameter'
+      Resource:
+        Fn::Join:
+          - ''
+          - - 'arn:aws:ssm:ap-southeast-2:927144551035:parameter/'
+            - Ref: DateParameterStore
 
 functions:
   fbLeadflow:
@@ -47,9 +56,10 @@ resources:
       Type: AWS::S3::Bucket
       Properties:
         BucketName: facebook-leadflow
-    ParameterStore:
+    DateParameterStore:
       Type: AWS::SSM::Parameter
       Properties:
         Type: String
-        Value:
+        Name: CurrentDay
+        Value: 'Sat May 09 2020 19:57:53 GMT+1000 (Australian Eastern Standard Time)'
 

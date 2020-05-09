@@ -1,8 +1,26 @@
 'use strict';
 const FormData = require('form-data')
 const axios = require('axios')
-const S3 = require('aws-sdk/clients/s3')
-const s3 = new S3({apiVersion: '2006-03-01'})
+const AWS = require('aws-sdk')
+const s3 = new AWS.S3({apiVersion: '2014-11-06'})
+const parameterStore = new AWS.SSM({apiVersion: '2014-11-06'})
+
+AWS.config.update({
+  region: 'ap-southeast-2'
+})
+
+const getParam = param => {
+  return new Promise((res, rej) => {
+    parameterStore.getParameter({
+      Name: param
+    }, (err, data) => {
+        if (err) {
+          return rej(err)
+        }
+        return res(data)
+    })
+  })
+}
 
 const pagesDetails = [
   {
@@ -79,8 +97,12 @@ module.exports.fbLeadflow = async event => {
   if (showDebugingInfo) {
     api.setDebug(true)
   }
-  //* Use Parameter store in System Manager
-  let currentDate
+  //* Use Parameter store in System Manager to get current day
+  const currentDayString = await parameterStore.getParameter({
+    Name: CurrentDay
+  }).promise()
+  const currentDayDate = new Date(currentDayString)
+  //* Test if it's the same month and same day if so use the param store value as folder if not update param store and use the updated date
 
   let fields, params
   fields = []
