@@ -1,0 +1,55 @@
+service: fb-zoho-aws-connector
+
+plugins:
+  - serverless-offline
+  - serverless-finch
+
+custom:
+  client:
+    bucketName: facebook-login-page
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+  stage: prod
+  region: ap-southeast-2
+  iamRoleStatements:
+    - Effect: 'Allow'
+      Action:
+        - 's3:ListBucket'
+      Resource: { 'Fn::Join' : ['', ['arn:aws:s3:::', { 'Ref' : 'FacebookLeadflowBucket' } ] ]  }
+    - Effect: 'Allow'
+      Action:
+        - 's3:PutObject'
+        - 's3:GetObject'
+      Resource:
+        Fn::Join:
+          - ''
+          - - 'arn:aws:s3:::'
+            - Ref: FacebookLeadflowBucket
+            - '/*'
+
+functions:
+  fbLeadflow:
+    handler: handler.fbLeadflow
+    events:
+    - http:
+        path: fb-leadflow
+        method: post
+    - http:
+        path: fb-leadflow
+        method: get
+
+# Cloudformation Template
+resources:
+  Resources:
+    FacebookLeadflowBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: facebook-leadflow
+    ParameterStore:
+      Type: AWS::SSM::Parameter
+      Properties:
+        Type: String
+        Value:
+

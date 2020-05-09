@@ -1,0 +1,21 @@
+{
+  "name": "fbzohoawsconnector",
+  "version": "1.0.0",
+  "description": "A connector function to bring FB leads into AWS",
+  "main": "handler.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "John Stewart",
+  "license": "ISC",
+  "dependencies": {
+    "aws-sdk": "^2.670.0",
+    "axios": "^0.19.2",
+    "facebook-nodejs-business-sdk": "^7.0.0",
+    "serverless-finch": "^2.5.2"
+  },
+  "devDependencies": {
+    "serverless-dotenv-plugin": "^2.4.2",
+    "serverless-offline": "^6.1.5"
+  }
+}
