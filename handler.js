@@ -2,26 +2,15 @@
 const FormData = require('form-data')
 const axios = require('axios')
 const AWS = require('aws-sdk')
-const s3 = new AWS.S3({apiVersion: '2014-11-06'})
-const parameterStore = new AWS.SSM({apiVersion: '2014-11-06'})
+const s3 = new AWS.S3({apiVersion: '2006-03-01'})
+const ssm = new AWS.SSM({apiVersion: '2014-11-06'})
+const bizSdk = require('facebook-nodejs-business-sdk');
 
 AWS.config.update({
   region: 'ap-southeast-2'
 })
 
-const getParam = param => {
-  return new Promise((res, rej) => {
-    parameterStore.getParameter({
-      Name: param
-    }, (err, data) => {
-        if (err) {
-          return rej(err)
-        }
-        return res(data)
-    })
-  })
-}
-
+// TODO Missing Indonesio, Malaysia, and India
 const pagesDetails = [
   {
     pageId: '266317873423703',
@@ -65,115 +54,124 @@ const pagesDetails = [
   }
 ]
 
-const bizSdk = require('facebook-nodejs-business-sdk');
 const Lead = bizSdk.Lead;
 
 const ZOHO_API_ENQUIRES = 'https://www.zohoapis.com/crm/v2/functions/facebookleadflow/actions/execute?auth_type=apikey&zapikey=1003.84fb08f0ab6ea57846f1a94aa28a62ed.d93fe2b5d709deb3e2ed25902703b108'
 
-module.exports.fbLeadflow = async event => {
-  //! SETUP - to be deleted afterwards
-  //* 1) Setup the app that I'll be creating with the FB identity that Jake gives me, follow the tutorial I followed yesterday and setup the subscription going through the login process, etc
-  //* 2) Get a long lived user access token so I can get an eternal page access token and add them to the env
-  //! INTEGRATION
-  //* 3) Get the leads from the array that is sent to the lambda by parsing JSON and then extracting
-  // Convert to JS object
-  const webhookLeadgenObject = JSON.parse(event.body)
-  const leadgenChanges = webhookLeadgenObject.entry[0].changes
-  console.log('Converted to JS object', leadgenChanges)
-
-  // Get appropriate page access token
-  const pageIdSearchingFor = leadgenChanges[0].value.page_id
-  const elementPos = pagesDetails.map((pageObject) => pageObject.pageId ).indexOf(pageIdSearchingFor)
-  const foundPageObject = pagesDetails[elementPos]
-  console.log('Found appropriate object with page access token', foundPageObject)
-
-  // Initialise API with Page Access Token
-  const api = bizSdk.FacebookAdsApi.init(foundPageObject.longLivedAccessToken)
-  console.log('Api initialised', api);
-
-  // ! DELETE THIS WHEN FINISHED
-  // Setting this to true shows more debugging info.
-  const showDebugingInfo = true
-  if (showDebugingInfo) {
-    api.setDebug(true)
-  }
-  //* Use Parameter store in System Manager to get current day
-  const currentDayString = await parameterStore.getParameter({
-    Name: CurrentDay
-  }).promise()
-  const currentDayDate = new Date(currentDayString)
-  //* Test if it's the same month and same day if so use the param store value as folder if not update param store and use the updated date
-
-  let fields, params
-  fields = []
-  params = {}
-  const ONLY_ONE_LEAD_GEN = 1
-  if (leadgenChanges.length === ONLY_ONE_LEAD_GEN) {
-    // const leadgenId = leadgenChanges[0].value.leadgen_id
-    // const leadData = await (new Lead(leadgenId)).get(fields, params)
-    // console.log('Got Lead Data', leadData)
-    // const parsedLeadData = JSON.parse(leadData)
-    // const leadgenData = parsedLeadData.field_data.reduce((leadgenDataObject, leadgenField) => {
-    //   return Object.assign(leadgenDataObject, {
-    //     [`${leadgenField.name}`]: `${leadgenField.values[0]}`
-    //   })
-    // }, {})
-    const testData = JSON.stringify({
-      email: 'test@email.com',
-      first_name: 'test',
-      last_name: 'user',
-      phone_number: 444123987
-    })
-    // I have to consider when the Lambda isn't running how I can put files for the day into the same folder?
-    // I can store a JSON in the bucket to act as a kind of keeper of time. If a new day then change it to that date.
-    const timeStamp = Date.now()
-    const params = {
-    Body: testData,
-    Bucket: 'facebook-leadflow',
-    Key: `${currentDate}/${timeStamp}.json`
-  }
-    // send to Zoho and S3 bucket here
-    const formData = new FormData()
-    formData.append('leadData', testData)
-    const transformedData = {
-      body: formData,
-      config: {
-        headers: formData.getHeaders(),
-    },
-    };
-    try {
-      const zohoRes = await axios({
-        method: 'post',
-        url: ZOHO_API_ENQUIRES,
-        data: transformedData.body,
-        ...transformedData.config
-      })
-      console.log('Res from Zoho', zohoRes)
-    } catch (error) {
-      console.error(error)
-    }
-
-
-
-  } else {
-
-  }
-
-  // let message;
-
-  // try {
-  //   message = await s3.putObject(params).promise();
-  // } catch (error) {
-  //   message = error;
-  //   console.log('ERROR', error);
-  // }
-  // console.log('testing log', event, event.queryStringParameters['hub.challenge']);
+module.exports.fbLeadflow = async (event, context) => {
+  // N.B. - This is to prevent the lambda from running twice which would create unnecessary duplicates
+  context.callbackWaitsForEmptyEventLoop = false
 
   console.log('event', event);
-  console.log('event', event.body.entry);
 
+  //! SETUP - to be deleted afterwards
+  // TODO
+  //* 3) Setup request header check in lambda to make sure a request is from FB.
+  //! INTEGRATION
+  // //* 1) Get the new leadgen data from the array sent from the webhook
+  // const webhookLeadgenObject = JSON.parse(event.body)
+  // const leadgenChanges = webhookLeadgenObject.entry[0].changes
+  // console.log('Converted to JS object', leadgenChanges)
+
+  // //* 2) Get appropriate page access token
+  // const pageIdSearchingFor = leadgenChanges[0].value.page_id
+  // const elementPos = pagesDetails.map((pageObject) => pageObject.pageId ).indexOf(pageIdSearchingFor)
+  // const foundPageObject = pagesDetails[elementPos]
+  // console.log('Found page access token', foundPageObject)
+
+  // //* 3) Initialise FB API with eternal Page Access Token
+  // bizSdk.FacebookAdsApi.init(foundPageObject.longLivedAccessToken)
+
+  // //* 4) Get appropriate date for the S3 folder storing the current day's Leads
+  // // N.B Leads to be stored per day in an S3 bucket under the current
+  // // date which is stored in SSM and updated when the new leads don't match the stored value
+  // const ssmGetReturnObject = await ssm.getParameter({
+  //   Name: 'DateOfDayForFolderName'
+  // }).promise()
+  // const storedDayTimestampString = ssmGetReturnObject.Parameter.Value
+  // const storedDayTimestampNumber = Number(storedDayTimestampString)
+  // const storedDayTimestampDate = new Date(storedDayTimestampNumber)
+  // const storedDayDate = storedDayTimestampDate.getDate()
+  // const storedDayMonth = storedDayTimestampDate.getMonth()
+  // const nowTimestamp = Date.now()
+  // const nowTimestampDate = new Date(nowTimestamp)
+  // const nowDate = nowTimestampDate.getDate()
+  // const nowMonth = nowTimestampDate.getMonth()
+
+  // let nameOfS3Folder
+  // // Only using date and month as leads will be coming in frequently
+  // if(storedDayDate == nowDate && storedDayMonth == nowMonth) {
+  //   nameOfS3Folder = new Date(storedDayTimestampNumber).toUTCString()
+  //   console.log('Using stored date for folder name', nameOfS3Folder)
+  // } else {
+  //   // N.B. Type is required even though documentation says differently
+  //   const ssmPutReturnObject = await ssm.putParameter({
+  //     Name: 'DateOfDayForFolderName',
+  //     Value: `${nowTimestamp}`,
+  //     Overwrite: true,
+  //     Type: 'String'
+  //   }).promise()
+  //   console.log('Added new timestamp to SSM', ssmPutReturnObject)
+  //   nameOfS3Folder = new Date(nowTimestamp).toUTCString()
+  //   console.log('Using new date for folder name', nameOfS3Folder)
+  // }
+
+  // let fields, params, leadgenId, leadData, parsedLeadData, leadgenData, leadgenJsonTimeStamp, formData, s3Res, s3Params, zohoRes, stringifiedLeadgenData, transformedData, status
+  // fields = []
+  // params = {}
+  // const leadgenChangesLength = leadgenChanges.length
+  // //* 5) Loop through leadgenChanges to get and parse lead data, store in Zoho and S3 bucket
+  // for (let index = 0; index < leadgenChangesLength; index++) {
+  //   try {
+  //     //* a) Get Leadgen data for one lead and parse into object
+  //     leadgenId = leadgenChanges[index].value.leadgen_id
+  //     leadData = await (new Lead(leadgenId)).get(fields, params)
+  //     leadData = testLeadData[leadgenId]
+  //     console.log('Got Lead Data', leadData)
+  //     parsedLeadData = JSON.parse(leadData)
+  //     //* b) Parse Leads data into appropriate object
+  //     leadgenData = parsedLeadData.field_data.reduce((leadgenDataObject, leadgenField) => {
+  //       return Object.assign(leadgenDataObject, {
+  //         [`${leadgenField.name}`]: `${leadgenField.values[0]}`
+  //       })
+  //     }, {})
+
+  //     stringifiedLeadgenData = JSON.stringify(leadgenData)
+  //     // Data & config for S3
+  //     leadgenJsonTimeStamp = Date.now()
+  //     s3Params = {
+  //       Body: stringifiedLeadgenData,
+  //       Bucket: 'facebook-leadflow',
+  //       Key: `${nameOfS3Folder}/${leadgenJsonTimeStamp}.json`
+  //     }
+  //     // Data & config for Zoho
+  //     formData = new FormData()
+  //     formData.append('leadData', stringifiedLeadgenData)
+  //     transformedData = {
+  //       body: formData,
+  //       config: {
+  //         headers: formData.getHeaders(),
+  //       }
+  //     }
+  //     //* c) Store leadgen data in S3
+  //     s3Res = await s3.putObject(s3Params).promise();
+  //     console.log('Lead stored in S3', s3Res);
+  //     //* d) Store leadgen data in Zoho
+  //     zohoRes = await axios({
+  //       method: 'post',
+  //       url: ZOHO_API_ENQUIRES,
+  //       data: transformedData.body,
+  //       ...transformedData.config
+  //     })
+  //     console.log('Res from Zoho', zohoRes)
+  //     status = zohoRes.status
+  //   } catch (error) {
+  //     console.log('ERROR in S3 or Zoho save', error)
+  //     throw new Error(error)
+  //   }
+  // }
 
   return {
-        statusCode: 200
-      };
-};
+    statusCode: 200
+  }
+}

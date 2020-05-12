@@ -13,6 +13,7 @@ provider:
   runtime: nodejs12.x
   stage: prod
   region: ap-southeast-2
+  timeout: 30
   iamRoleStatements:
     - Effect: 'Allow'
       Action:
@@ -60,6 +61,12 @@ resources:
       Type: AWS::SSM::Parameter
       Properties:
         Type: String
-        Name: CurrentDay
-        Value: 'Sat May 09 2020 19:57:53 GMT+1000 (Australian Eastern Standard Time)'
+        Name: DateOfDayForFolderName
+        Value: '1589018273000'
+    FunctionAsyncConfig:
+      Type: AWS::Lambda::EventInvokeConfig
+      Properties:
+        FunctionName: 'fb-zoho-aws-connector-prod-fbLeadflow'
+        MaximumRetryAttempts: 0
+        Qualifier: $LATEST
 
