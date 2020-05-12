@@ -2,11 +2,9 @@ service: fb-zoho-aws-connector
 
 plugins:
   - serverless-offline
-  - serverless-finch
+  - serverless-dotenv-plugin
 
 custom:
-  client:
-    bucketName: facebook-login-page
 
 provider:
   name: aws
@@ -46,9 +44,6 @@ functions:
     - http:
         path: fb-leadflow
         method: post
-    - http:
-        path: fb-leadflow
-        method: get
 
 # Cloudformation Template
 resources:
