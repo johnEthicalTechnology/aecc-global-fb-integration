@@ -14,20 +14,16 @@ AWS.config.update({
 // TODO Missing Indonesio, Malaysia, and India
 const pagesDetails = [
   {
+    pageId: '506440762708909',
+    longLivedAccessToken: process.env.GREECE_PAGE_ACCESS_TOKEN
+  },
+  {
     pageId: '266317873423703',
     longLivedAccessToken: process.env.GLOBAL_PAGE_ACCESS_TOKEN
   },
   {
-    pageId: '1598122583737725',
-    longLivedAccessToken: process.env.INDIA_PAGE_ACCESS_TOKEN
-  },
-  {
     pageId: '385316278330827',
     longLivedAccessToken: process.env.NEAPL_PAGE_ACCESS_TOKEN
-  },
-  {
-    pageId: '506440762708909',
-    longLivedAccessToken: process.env.GREECE_PAGE_ACCESS_TOKEN
   },
   {
     pageId: '1636950326523616',
@@ -38,6 +34,10 @@ const pagesDetails = [
     longLivedAccessToken: process.env.THAILAND_PAGE_ACCESS_TOKEN
   },
   {
+    pageId: '314193669023890',
+    longLivedAccessToken: process.env.SINGAPORE_PAGE_ACCESS_TOKEN
+  },
+  {
     pageId: '713778565488189',
     longLivedAccessToken: process.env.INDONESIA_PAGE_ACCESS_TOKEN
   },
@@ -46,16 +46,14 @@ const pagesDetails = [
     longLivedAccessToken: process.env.MALAYSIA_PAGE_ACCESS_TOKEN
   },
   {
-    pageId: '314193669023890',
-    longLivedAccessToken: process.env.SINGAPORE_PAGE_ACCESS_TOKEN
+    pageId: '1598122583737725',
+    longLivedAccessToken: process.env.INDIA_PAGE_ACCESS_TOKEN
   },
   {
     pageId: '444444444444',
     longLivedAccessToken: 'testhingtoken'
   }
 ]
-
-const Lead = bizSdk.Lead;
 
 const ZOHO_API_ENQUIRES = 'https://www.zohoapis.com/crm/v2/functions/facebookleadflow/actions/execute?auth_type=apikey&zapikey=1003.84fb08f0ab6ea57846f1a94aa28a62ed.d93fe2b5d709deb3e2ed25902703b108'
 
@@ -68,7 +66,13 @@ function sha1Signature(payload) {
   return hmac.digest('hex')
 }
 
+function sha256Hash(pageAccessToken) {
+  const hmac = crypto.createHmac('sha256', process.env.APP_SECRET).update(pageAccessToken)
+  return hmac.digest('hex')
+}
+
 module.exports.fbLeadflow = async (event, context) => {
+  const Lead = bizSdk.Lead;
   // N.B. - This is to prevent the lambda from running twice which would create unnecessary duplicates
   context.callbackWaitsForEmptyEventLoop = false
 
@@ -76,22 +80,26 @@ module.exports.fbLeadflow = async (event, context) => {
   const lambdaCreatedSha1Signature = sha1Signature(event.body)
   const fbSha1Signature = event.headers['X-Hub-Signature'].slice(5)
   if(fbSha1Signature != lambdaCreatedSha1Signature) {
+    console.error('0) fbSha1Signature did not match')
     return { statusCode: 403 }
   }
+  console.log('0) fbSha1Signature match!')
 
   //* 1) Get the new leadgen data from the array sent from the webhook
   const webhookLeadgenObject = JSON.parse(event.body)
   const leadgenChanges = webhookLeadgenObject.entry[0].changes
-  console.log('Converted to JS object', leadgenChanges)
+  console.log('1) Converted to JS object', leadgenChanges)
 
   //* 2) Get appropriate page access token
   const pageIdSearchingFor = leadgenChanges[0].value.page_id
   const elementPos = pagesDetails.map((pageObject) => pageObject.pageId ).indexOf(pageIdSearchingFor)
   const foundPageObject = pagesDetails[elementPos]
-  console.log('Found page access token', foundPageObject)
+  console.log('2) Found page access token', foundPageObject)
 
   //* 3) Initialise FB API with eternal Page Access Token
-  bizSdk.FacebookAdsApi.init(foundPageObject.longLivedAccessToken)
+  const api = bizSdk.FacebookAdsApi.init(foundPageObject.longLivedAccessToken)
+  api.setDebug(true);
+  console.log('3) Initialise FB Biz API');
 
   //* 4) Get appropriate date for the S3 folder storing the current day's Leads
   // N.B Leads to be stored per day in an S3 bucket under the current
@@ -108,12 +116,14 @@ module.exports.fbLeadflow = async (event, context) => {
   const nowTimestampDate = new Date(nowTimestamp)
   const nowDate = nowTimestampDate.getDate()
   const nowMonth = nowTimestampDate.getMonth()
+  console.log('4)a) Created lead object for S3 storage.');
+
 
   let nameOfS3Folder
   // Only using date and month as leads will be coming in frequently
   if(storedDayDate == nowDate && storedDayMonth == nowMonth) {
     nameOfS3Folder = new Date(storedDayTimestampNumber).toUTCString()
-    console.log('Using stored date for folder name', nameOfS3Folder)
+    console.log('4) b) Using stored date for folder name', nameOfS3Folder)
   } else {
     // N.B. Type is required even though documentation says differently
     const ssmPutReturnObject = await ssm.putParameter({
@@ -122,14 +132,17 @@ module.exports.fbLeadflow = async (event, context) => {
       Overwrite: true,
       Type: 'String'
     }).promise()
-    console.log('Added new timestamp to SSM', ssmPutReturnObject)
+    console.log('4) c) Added new timestamp to SSM', ssmPutReturnObject)
     nameOfS3Folder = new Date(nowTimestamp).toUTCString()
-    console.log('Using new date for folder name', nameOfS3Folder)
+    console.log('4) d) Using new date for folder name', nameOfS3Folder)
   }
 
   let fields, params, leadgenId, leadData, parsedLeadData, leadgenData, leadgenJsonTimeStamp, formData, s3Res, s3Params, zohoRes, stringifiedLeadgenData, transformedData, status
   fields = []
-  params = {}
+  const appsecret_proof = sha256Hash(foundPageObject.longLivedAccessToken)
+  params = {
+    appsecret_proof
+  }
   const leadgenChangesLength = leadgenChanges.length
   //* 5) Loop through leadgenChanges to get and parse lead data, store in Zoho and S3 bucket
   for (let index = 0; index < leadgenChangesLength; index++) {
@@ -137,11 +150,12 @@ module.exports.fbLeadflow = async (event, context) => {
       //* a) Get Leadgen data for one lead and parse into object
       leadgenId = leadgenChanges[index].value.leadgen_id
       leadData = await (new Lead(leadgenId)).get(fields, params)
-      leadData = testLeadData[leadgenId]
-      console.log('Got Lead Data', leadData)
-      parsedLeadData = JSON.parse(leadData)
+      console.log('5) a) Got Lead Data', leadData)
+      // leadData = leadData[leadgenId]
+      // console.log('5) a) Got Lead Data', leadData)
+      // parsedLeadData = JSON.parse(leadData)
       //* b) Parse Leads data into appropriate object
-      leadgenData = parsedLeadData.field_data.reduce((leadgenDataObject, leadgenField) => {
+      leadgenData = leadData.field_data.reduce((leadgenDataObject, leadgenField) => {
         return Object.assign(leadgenDataObject, {
           [`${leadgenField.name}`]: `${leadgenField.values[0]}`
         })
@@ -164,6 +178,7 @@ module.exports.fbLeadflow = async (event, context) => {
           headers: formData.getHeaders(),
         }
       }
+      console.log('Create form for Zoho and s3 params');
       //* c) Store leadgen data in S3
       s3Res = await s3.putObject(s3Params).promise();
       console.log('Lead stored in S3', s3Res);

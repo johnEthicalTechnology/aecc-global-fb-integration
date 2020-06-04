@@ -3,8 +3,11 @@ service: fb-zoho-aws-connector
 plugins:
   - serverless-offline
   - serverless-dotenv-plugin
+  - serverless-finch
 
 custom:
+  client:
+    bucketName: facebook-login-page
 
 provider:
   name: aws
